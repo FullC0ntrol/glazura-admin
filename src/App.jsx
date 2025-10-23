@@ -1,13 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import {
-  login,
-  listAlbums,
-  createAlbum,
-  uploadPhotos,
-  updateAlbum,
-} from "./api";
+import { login, listAlbums, createAlbum, uploadPhotos, updateAlbum } from "./api";
 
 const API = import.meta.env.VITE_API_BASE || "https://admin.chmura-glazura.pl";
+console.log(API);
 
 /* --------------------------- TOAST --------------------------- */
 function Toast({ msg, onDone }) {
@@ -15,6 +10,7 @@ function Toast({ msg, onDone }) {
     const t = setTimeout(onDone, 2500);
     return () => clearTimeout(t);
   }, [onDone]);
+  if (!msg) return null;
   return (
     <div className="fixed top-4 right-4 px-4 py-2 bg-black/80 text-white rounded-lg shadow-lg z-50">
       {msg}
@@ -81,9 +77,7 @@ function NewAlbumModal({ open, onClose, onCreate }) {
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="bg-white/10 backdrop-blur-md border border-white/20 p-6 rounded-xl w-full max-w-md">
-        <h2 className="text-lg text-white mb-4 font-semibold">
-          Nowa realizacja
-        </h2>
+        <h2 className="text-lg text-white mb-4 font-semibold">Nowa realizacja</h2>
         <input
           autoFocus
           value={title}
@@ -162,15 +156,11 @@ export default function App() {
   /* --------------------------- USUWANIE ZDJĘCIA --------------------------- */
   const removePhoto = async (id) => {
     if (!current) return;
-    // backendowy endpoint DELETE /api/photos/:id (dodaj w serwerze)
     await fetch(`${API}/api/photos/${id}`, {
       method: "DELETE",
       credentials: "include",
     });
-    setCurrent((c) => ({
-      ...c,
-      images: c.images.filter((img) => img.id !== id),
-    }));
+    setCurrent((c) => ({ ...c, images: c.images.filter((img) => img.id !== id) }));
     setAlbums((a) =>
       a.map((al) =>
         al.id === current.id
@@ -194,19 +184,34 @@ export default function App() {
     setToast("Usunięto realizację");
   };
 
-  /* --------------------------- ZAPISYWANIE --------------------------- */
-  const saveAlbum = async (publish = false) => {
+  /* --------------------------- PUBLIKACJA --------------------------- */
+  const publishAlbum = async () => {
     if (!current) return;
     setSaving(true);
     const updated = await updateAlbum(current.id, {
       title: current.title,
-      published: publish ? true : current.published || false,
+      published: true,
     });
     setAlbums((a) => a.map((al) => (al.id === current.id ? updated : al)));
     setCurrent(updated);
     setSaving(false);
-    setToast(publish ? "Opublikowano" : "Zapisano zmiany");
+    setToast("Opublikowano");
   };
+
+  /* --------------------------- AUTOSAVE TYTUŁU (debounce) --------------------------- */
+  useEffect(() => {
+    if (!current) return;
+    const t = setTimeout(async () => {
+      const updated = await updateAlbum(current.id, {
+        title: current.title,
+        published: current.published || false,
+      });
+      setAlbums((a) => a.map((al) => (al.id === current.id ? updated : al)));
+      setCurrent(updated);
+      setToast("Zapisano zmiany (auto)");
+    }, 600);
+    return () => clearTimeout(t);
+  }, [current?.title]); // zapis po 600 ms od ostatniej zmiany tytułu
 
   /* --------------------------- WIDOK LOGOWANIA --------------------------- */
   if (!authed) {
@@ -220,9 +225,7 @@ export default function App() {
             Panel admina
           </h1>
           <div>
-            <label className="block text-sm text-white/70 mb-1">
-              Użytkownik
-            </label>
+            <label className="block text-sm text-white/70 mb-1">Użytkownik</label>
             <input
               name="user"
               className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:ring-2 focus:ring-sky-400 outline-none"
@@ -242,7 +245,7 @@ export default function App() {
             Zaloguj
           </button>
         </form>
-        {toast && <Toast msg={toast} onDone={() => setToast("")} />}
+        <Toast msg={toast} onDone={() => setToast("")} />
       </div>
     );
   }
@@ -252,7 +255,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-950 text-white p-6">
         <div className="max-w-5xl mx-auto">
-          <header className="flex justify-between items-center mb-8">
+          <header className="flex justify-between items-center mb-8 sticky top-0 bg-slate-950/80 backdrop-blur py-3 z-10">
             <h1 className="text-2xl font-bold">Realizacje</h1>
             <button
               onClick={() => setShowModal(true)}
@@ -274,15 +277,11 @@ export default function App() {
                   onClick={() => setCurrent(a)}
                   className="bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-white/10 transition cursor-pointer"
                 >
-                  <h3 className="font-semibold mb-2">{a.title}</h3>
-                  <p className="text-sm text-white/60">
-                    {a.images?.length || 0} zdjęć
-                  </p>
+                  <h3 className="font-semibold mb-2 truncate">{a.title}</h3>
+                  <p className="text-sm text-white/60">{a.images?.length || 0} zdjęć</p>
                   <p
                     className={`text-xs mt-1 ${
-                      a.published
-                        ? "text-emerald-400"
-                        : "text-amber-400 italic"
+                      a.published ? "text-emerald-400" : "text-amber-400 italic"
                     }`}
                   >
                     {a.published ? "Opublikowano" : "Szkic"}
@@ -293,22 +292,25 @@ export default function App() {
           )}
         </div>
 
-        <NewAlbumModal
-          open={showModal}
-          onClose={() => setShowModal(false)}
-          onCreate={handleCreate}
-        />
-
-        {toast && <Toast msg={toast} onDone={() => setToast("")} />}
+        <NewAlbumModal open={showModal} onClose={() => setShowModal(false)} onCreate={handleCreate} />
+        <Toast msg={toast} onDone={() => setToast("")} />
       </div>
     );
   }
 
   /* --------------------------- WIDOK EDYCJI REALIZACJI --------------------------- */
+  const coverThumb =
+    current.images?.[0]?.thumbUrl ||
+    current.images?.[0]?.fileUrl ||
+    "";
+
+  const coverSrc =
+    coverThumb?.startsWith("http") ? coverThumb : `${API}${coverThumb}`;
+
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6">
       <div className="max-w-5xl mx-auto">
-        <header className="flex justify-between items-center mb-8">
+        <header className="flex justify-between items-center mb-8 sticky top-0 bg-slate-950/80 backdrop-blur py-3 z-10 border-b border-white/10">
           <button
             onClick={() => setCurrent(null)}
             className="text-white/70 hover:text-white"
@@ -317,6 +319,16 @@ export default function App() {
           </button>
 
           <div className="flex items-center gap-3">
+            <span
+              className={`text-xs px-2 py-1 rounded-full border ${
+                current.published
+                  ? "border-emerald-400 text-emerald-300"
+                  : "border-amber-400 text-amber-300"
+              }`}
+              title="Status publikacji"
+            >
+              {current.published ? "Opublikowano" : "Szkic (auto-zapis)"}
+            </span>
             <button
               onClick={deleteAlbum}
               className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg text-white font-semibold"
@@ -324,28 +336,30 @@ export default function App() {
               Usuń realizację
             </button>
             <button
-              disabled={saving}
-              onClick={() => saveAlbum(false)}
-              className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg border border-white/15"
+              disabled={saving || current.published}
+              onClick={publishAlbum}
+              className={`px-4 py-2 rounded-lg text-white font-semibold ${
+                current.published
+                  ? "bg-emerald-700 cursor-not-allowed"
+                  : "bg-emerald-500 hover:bg-emerald-600"
+              }`}
             >
-              {saving ? "Zapisywanie..." : "Zapisz szkic"}
-            </button>
-            <button
-              disabled={saving}
-              onClick={() => saveAlbum(true)}
-              className="bg-emerald-500 hover:bg-emerald-600 px-4 py-2 rounded-lg text-white font-semibold"
-            >
-              {saving ? "Publikuję..." : "Opublikuj"}
+              {saving ? "Publikuję..." : current.published ? "Opublikowano" : "Opublikuj"}
             </button>
           </div>
         </header>
 
         <div className="space-y-6">
+          {/* Podgląd okładki (pierwsze foto) */}
+          {coverSrc ? (
+            <div className="rounded-xl overflow-hidden border border-white/10 bg-white/5">
+              <img src={coverSrc} alt="" className="w-full max-h-[360px] object-cover" />
+            </div>
+          ) : null}
+
           <input
             value={current.title}
-            onChange={(e) =>
-              setCurrent((c) => ({ ...c, title: e.target.value }))
-            }
+            onChange={(e) => setCurrent((c) => ({ ...c, title: e.target.value }))}
             className="text-2xl font-bold bg-transparent border-b border-white/20 w-full outline-none pb-2"
             placeholder="Tytuł realizacji..."
           />
@@ -354,25 +368,26 @@ export default function App() {
 
           {current.images?.length > 0 ? (
             <div className="grid gap-3 grid-cols-[repeat(auto-fill,minmax(200px,1fr))]">
-              {current.images.map((img) => (
-                <div
-                  key={img.id}
-                  className="relative rounded-xl overflow-hidden border border-white/10 bg-white/5 group"
-                >
-                  <img
-                    src={`${API}${img.thumbUrl}`}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                  <button
-                    onClick={() => removePhoto(img.id)}
-                    className="absolute top-2 right-2 bg-black/60 hover:bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
-                    title="Usuń zdjęcie"
+              {current.images.map((img) => {
+                const src = img.thumbUrl?.startsWith("http")
+                  ? img.thumbUrl
+                  : `${API}${img.thumbUrl}`;
+                return (
+                  <div
+                    key={img.id}
+                    className="relative rounded-xl overflow-hidden border border-white/10 bg-white/5 group"
                   >
-                    ✕
-                  </button>
-                </div>
-              ))}
+                    <img src={src} alt="" className="w-full h-full object-cover" />
+                    <button
+                      onClick={() => removePhoto(img.id)}
+                      className="absolute top-2 right-2 bg-black/60 hover:bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                      title="Usuń zdjęcie"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <p className="text-white/70">Brak zdjęć w tej realizacji.</p>
@@ -380,7 +395,7 @@ export default function App() {
         </div>
       </div>
 
-      {toast && <Toast msg={toast} onDone={() => setToast("")} />}
+      <Toast msg={toast} onDone={() => setToast("")} />
     </div>
   );
 }
