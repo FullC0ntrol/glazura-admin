@@ -1,4 +1,4 @@
-const API = "http://localhost:4000";
+const API = import.meta.env.VITE_API_BASE || "https://admin.chmura-glazura.pl";
 
 // 🔑 Logowanie admina
 export const login = (user, pass) =>
